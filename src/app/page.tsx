@@ -5,6 +5,7 @@ import TarjetaPartido from "@/components/TarjetaPartido";
 import PanelAnalisisProfundo from "@/components/PanelAnalisisProfundo";
 import { fechaColombiaHoy, formatearFechaLarga } from "@/lib/fecha";
 import { descargarInformeHtml } from "@/lib/exportarHtml";
+import { descargarInformeExcel } from "@/lib/exportarExcel";
 import { nivelDesdeProbabilidad, type AnalisisDiaResponse, type Partido } from "@/lib/types";
 
 export default function Home() {
@@ -44,12 +45,19 @@ export default function Home() {
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-10">
-      <header className="text-center">
-        <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-          ⚽ BTTS Analyzer
+      <header className="overflow-hidden rounded-3xl border border-white/5 bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/40 px-6 py-10 text-center shadow-xl shadow-black/30 sm:py-14">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-3xl ring-1 ring-emerald-400/30 sm:h-16 sm:w-16 sm:text-4xl">
+          ⚽
+        </div>
+        <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-5xl">
+          BTTS Analyzer
         </h1>
-        <p className="mt-2 text-sm text-slate-400">
-          Análisis de probabilidad de que ambos equipos anoten, basado en datos reales y búsqueda web con IA.
+        <p className="mx-auto mt-3 max-w-xl text-sm text-slate-400 sm:text-base">
+          Inteligencia deportiva basada en datos reales y búsqueda web: probabilidad de que
+          ambos equipos anoten en los partidos del día.
+        </p>
+        <p className="mt-4 text-xs uppercase tracking-widest text-emerald-400/70">
+          Análisis estadístico · No es asesoría de apuestas
         </p>
       </header>
 
@@ -103,13 +111,23 @@ export default function Home() {
             <h2 className="text-lg font-semibold capitalize text-slate-100">
               {formatearFechaLarga(resultado.fecha)}
             </h2>
-            <button
-              type="button"
-              onClick={() => descargarInformeHtml(resultado)}
-              className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 ring-1 ring-white/10 transition hover:bg-slate-700"
-            >
-              ⬇️ Exportar informe HTML
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => descargarInformeHtml(resultado)}
+                className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 ring-1 ring-white/10 transition hover:bg-slate-700"
+              >
+                ⬇️ Exportar HTML
+              </button>
+              <button
+                type="button"
+                onClick={() => descargarInformeExcel(resultado)}
+                disabled={resultado.partidos.length === 0}
+                className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 ring-1 ring-white/10 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                📊 Exportar Excel
+              </button>
+            </div>
           </div>
 
           {resultado.mensaje && (

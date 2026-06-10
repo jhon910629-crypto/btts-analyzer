@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GEMINI_MODEL, extraerJSON, getGeminiClient } from "@/lib/gemini";
+import { GEMINI_MODEL, conReintentos, extraerJSON, getGeminiClient } from "@/lib/gemini";
 import type { AnalisisDiaResponse } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Debes indicar una fecha." }, { status: 400 });
   }
 
-  const prompt = `Busca los partidos de fútbol reales programados para ${fecha}. Para cada uno evalúa: % BTTS últimos 5-10 partidos de cada equipo, promedio de goles a favor y en contra, rendimiento local/visitante, racha de porterías a cero y contexto motivacional.
+  const prompt = `Busca en internet los partidos de fútbol reales programados para ${fecha}. Apóyate en resultados de búsqueda de sitios de estadísticas y análisis deportivo como Flashscore, SofaScore, WhoScored, FootyStats, Transfermarkt, ESPN y similares para obtener datos actualizados y confiables. Para cada partido evalúa: % BTTS últimos 5-10 partidos de cada equipo, promedio de goles a favor y en contra, rendimiento local/visitante, racha de porterías a cero y contexto motivacional.
 
 Devuelve SOLO un JSON válido (sin texto adicional, sin bloques de código markdown) con esta forma exacta:
 {
@@ -37,13 +37,15 @@ Incluye SOLO partidos que superen 65% de probabilidad BTTS, ordenados de mayor a
 
   try {
     const ai = getGeminiClient();
-    const respuesta = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
-    });
+    const respuesta = await conReintentos(() =>
+      ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: {
+          tools: [{ googleSearch: {} }],
+        },
+      })
+    );
 
     const texto = respuesta.text;
     if (!texto) {

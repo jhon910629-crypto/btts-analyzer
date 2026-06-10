@@ -14,6 +14,28 @@ export function getGeminiClient(): GoogleGenAI {
   return new GoogleGenAI({ apiKey });
 }
 
+// Reintenta una llamada a Gemini cuando el modelo responde con errores
+// transitorios de disponibilidad (503 UNAVAILABLE) o de cuota (429).
+export async function conReintentos<T>(
+  fn: () => Promise<T>,
+  intentos = 3,
+  esperaMs = 1500
+): Promise<T> {
+  for (let intento = 1; intento <= intentos; intento++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const mensaje = error instanceof Error ? error.message : String(error);
+      const transitorio = /503|UNAVAILABLE|429|RESOURCE_EXHAUSTED/i.test(mensaje);
+      if (!transitorio || intento === intentos) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, esperaMs * intento));
+    }
+  }
+  throw new Error("No se pudo completar la solicitud tras varios intentos.");
+}
+
 // Extrae el primer bloque JSON válido de un texto de respuesta de Gemini,
 // que puede venir envuelto en bloques de código ```json ... ``` o con texto
 // adicional alrededor.
