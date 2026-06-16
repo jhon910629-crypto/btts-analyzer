@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 
 // Modelo Gemini usado para los análisis. Se puede sobreescribir con la
 // variable de entorno GEMINI_MODEL si se requiere otra versión.
-export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 
 export function getGeminiClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -18,8 +18,8 @@ export function getGeminiClient(): GoogleGenAI {
 // transitorios de disponibilidad (503 UNAVAILABLE) o de cuota (429).
 export async function conReintentos<T>(
   fn: () => Promise<T>,
-  intentos = 3,
-  esperaMs = 1500
+  intentos = 5,
+  esperaMs = 2000
 ): Promise<T> {
   for (let intento = 1; intento <= intentos; intento++) {
     try {

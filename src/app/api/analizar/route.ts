@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GEMINI_MODEL, conReintentos, extraerJSON, getGeminiClient } from "@/lib/gemini";
+
+export const maxDuration = 60;
 import type { AnalisisDiaResponse } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
