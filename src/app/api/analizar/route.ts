@@ -96,6 +96,19 @@ Reglas importantes:
   } catch (error) {
     console.error("Error en /api/analizar:", error);
     const detalle = error instanceof Error ? error.message : "Error desconocido.";
+
+    if (/429|RESOURCE_EXHAUSTED|quota/i.test(detalle)) {
+      return NextResponse.json(
+        {
+          error:
+            "Cuota de la API de Gemini agotada (límite gratuito del día). " +
+            "Opciones: (1) espera hasta mañana para que se renueve, o " +
+            "(2) activa facturación en aistudio.google.com → el costo es < $0.01 por consulta.",
+        },
+        { status: 429 }
+      );
+    }
+
     return NextResponse.json(
       { error: `No se pudo completar el análisis: ${detalle}` },
       { status: 500 }

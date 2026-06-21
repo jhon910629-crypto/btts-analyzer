@@ -73,6 +73,18 @@ La hora debe estar convertida a hora de Colombia (UTC-5). Si no encuentras el pa
   } catch (error) {
     console.error("Error en /api/analizar-profundo:", error);
     const detalle = error instanceof Error ? error.message : "Error desconocido.";
+
+    if (/429|RESOURCE_EXHAUSTED|quota/i.test(detalle)) {
+      return NextResponse.json(
+        {
+          error:
+            "Cuota de la API de Gemini agotada (límite gratuito del día). " +
+            "Espera hasta mañana o activa facturación en aistudio.google.com.",
+        },
+        { status: 429 }
+      );
+    }
+
     return NextResponse.json(
       { error: `No se pudo completar el análisis: ${detalle}` },
       { status: 500 }
