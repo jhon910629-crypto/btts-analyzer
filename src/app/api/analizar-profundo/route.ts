@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GEMINI_MODEL, conReintentos, extraerJSON, getGeminiClient } from "@/lib/gemini";
+import { AI_MODEL, conReintentos, extraerJSON, getAIClient } from "@/lib/ai";
+import type { AnalisisProfundoResponse } from "@/lib/types";
 
 export const maxDuration = 60;
-import type { AnalisisProfundoResponse } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   let equipoLocal: unknown;
@@ -29,58 +29,68 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const prompt = `Busca en internet y haz un análisis profundo de probabilidad BTTS (ambos equipos anotan) para el partido ${equipoLocal} vs ${equipoVisitante} programado para ${fecha}. Apóyate en resultados de búsqueda de sitios de estadísticas y análisis deportivo como Flashscore, SofaScore, WhoScored, FootyStats, Transfermarkt, ESPN y similares. Investiga: % BTTS de los últimos 5-10 partidos de cada equipo, promedio de goles a favor y en contra, rendimiento como local/visitante, racha de porterías a cero, lesiones/sanciones relevantes y contexto motivacional (posición en tabla, importancia del partido).
+  const prompt = `Eres un analista deportivo experto. Realiza un análisis profundo de probabilidad BTTS (ambos equipos anotan) para el partido:
 
-Devuelve SOLO un JSON válido (sin texto adicional, sin bloques de código markdown) con esta forma exacta:
+${equipoLocal} vs ${equipoVisitante}
+Fecha: ${fecha}
+
+Investiga en profundidad basándote en tu conocimiento estadístico:
+1. % BTTS de los últimos 10 partidos de cada equipo (separado: como local / como visitante)
+2. Promedio de goles marcados y recibidos por partido en la temporada actual y anterior
+3. Historial de enfrentamientos directos: últimos 5 partidos cara a cara con resultados
+4. Delanteros y defensas clave: estado conocido del plantel
+5. Posición en tabla y contexto motivacional del partido
+6. Fase de la competición (liga regular, playoff, eliminatoria, grupo)
+7. Estadísticas defensivas: porterías a cero, goles recibidos en casa/fuera
+
+Devuelve SOLO un JSON válido (sin texto adicional, sin bloques de código markdown):
 {
   "partido": {
     "equipoLocal": "${equipoLocal}",
     "equipoVisitante": "${equipoVisitante}",
     "liga": "string",
-    "horaColombia": "HH:mm"
+    "horaColombia": "HH:mm o TBD"
   },
   "probabilidadBTTS": número entre 0 y 100,
-  "resumen": "resumen ejecutivo de 2-3 frases",
-  "estadisticasLocal": ["dato 1", "dato 2", "dato 3"],
-  "estadisticasVisitante": ["dato 1", "dato 2", "dato 3"],
-  "contextoMotivacional": "texto",
+  "resumen": "Resumen ejecutivo de 2-3 frases con los argumentos principales",
+  "estadisticasLocal": [
+    "% BTTS como local en últimas 10 jornadas",
+    "Promedio de goles marcados/recibidos en casa",
+    "Racha ofensiva o defensiva reciente"
+  ],
+  "estadisticasVisitante": [
+    "% BTTS como visitante en últimas 10 jornadas",
+    "Promedio de goles marcados/recibidos fuera",
+    "Racha ofensiva o defensiva reciente"
+  ],
+  "contextoMotivacional": "Descripción del contexto: posición en tabla, importancia del partido, necesidad de resultado",
   "nivelConfianza": "alto" | "medio" | "bajo",
-  "mensaje": "opcional, solo si no se encontró información suficiente"
-}
-
-La hora debe estar convertida a hora de Colombia (UTC-5). Si no encuentras el partido o información suficiente, dilo honestamente en "mensaje" y usa los valores que sí puedas confirmar. Nunca inventes datos.`;
+  "mensaje": "Solo si no tienes suficiente información sobre estos equipos"
+}`;
 
   try {
-    const ai = getGeminiClient();
+    const ai = getAIClient();
     const respuesta = await conReintentos(() =>
-      ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          tools: [{ googleSearch: {} }],
-        },
+      ai.chat.completions.create({
+        model: AI_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens: 2048,
       })
     );
 
-    const texto = respuesta.text;
-    if (!texto) {
-      throw new Error("Gemini no devolvió contenido de texto.");
-    }
+    const texto = respuesta.choices[0]?.message?.content ?? "";
+    if (!texto) throw new Error("El modelo no devolvió contenido.");
 
     const datos = extraerJSON<AnalisisProfundoResponse>(texto);
-
     return NextResponse.json(datos);
   } catch (error) {
     console.error("Error en /api/analizar-profundo:", error);
     const detalle = error instanceof Error ? error.message : "Error desconocido.";
 
-    if (/429|RESOURCE_EXHAUSTED|quota/i.test(detalle)) {
+    if (/429|rate.limit|too many/i.test(detalle)) {
       return NextResponse.json(
-        {
-          error:
-            "Cuota de la API de Gemini agotada (límite gratuito del día). " +
-            "Espera hasta mañana o activa facturación en aistudio.google.com.",
-        },
+        { error: "Demasiadas solicitudes. Espera un momento e intenta de nuevo." },
         { status: 429 }
       );
     }

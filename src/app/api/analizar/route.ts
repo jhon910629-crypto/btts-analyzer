@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GEMINI_MODEL, conReintentos, extraerJSON, getGeminiClient } from "@/lib/gemini";
+import { AI_MODEL, conReintentos, extraerJSON, getAIClient } from "@/lib/ai";
 import type { AnalisisDiaResponse } from "@/lib/types";
 
 export const maxDuration = 60;
@@ -16,95 +16,92 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Debes indicar una fecha." }, { status: 400 });
   }
 
-  const prompt = `Eres un analista deportivo experto en estadísticas de fútbol. Busca en internet los partidos de fútbol reales programados para ${fecha} usando sitios como Flashscore, SofaScore, WhoScored, FootyStats, Transfermarkt y ESPN.
+  const prompt = `Eres un analista deportivo experto en estadísticas de fútbol con conocimiento profundo de ligas europeas, sudamericanas y mundiales.
 
-Para cada partido analiza con precisión:
-- % de partidos BTTS (ambos equipos anotan) en los últimos 10 encuentros de cada equipo
-- Promedio de goles a favor y en contra por partido (últimas 10 jornadas)
-- Rendimiento como local / visitante por separado
-- Rachas actuales (goles marcados / recibidos consecutivos)
-- Lesiones y suspensiones que afecten la línea ofensiva o defensiva
-- Contexto motivacional (¿necesitan ganar?, ¿posición en tabla?, ¿rival directo?)
-- Cuotas y estadísticas de casas de apuestas como referencia (sin recomendar apuestas)
+Analiza los partidos de fútbol para la fecha ${fecha}. Basándote en tu conocimiento estadístico de los equipos, identifica partidos con alta o baja probabilidad BTTS (ambos equipos anotan).
 
-Clasifica los partidos en DOS categorías:
+Para cada partido utiliza estos criterios estadísticos:
+- % BTTS histórico de cada equipo en las últimas temporadas (promedio de partidos donde ambos anotaron)
+- Promedio de goles anotados y recibidos por partido
+- Rendimiento ofensivo/defensivo como local y como visitante
+- Historial de encuentros directos entre ambos equipos
+- Racha reciente de resultados y forma del equipo
+- Contexto motivacional (posición en tabla, importancia del partido, fase de la competición)
+- Presencia de delanteros o defensas clave (según conocimiento histórico del equipo)
 
-1. **BTTS SÍ** (ambos anotan): partidos donde la probabilidad de que AMBOS equipos marquen es ≥65%
-2. **BTTS NO** (al menos uno no anota): partidos donde la probabilidad de que AL MENOS UN equipo NO marque es ≥65% (portería a cero probable, partido defensivo o goleo de un solo lado)
+Considera partidos de ligas activas durante el período de ${fecha} incluyendo: Premier League, LaLiga, Serie A, Bundesliga, Ligue 1, Liga Colombiana, Copa Libertadores, Copa Sudamericana, Champions League, Europa League, partidos internacionales y otras ligas relevantes activas en esa fecha.
 
-Devuelve SOLO un JSON válido (sin texto adicional, sin bloques de código markdown) con esta estructura exacta:
+Devuelve SOLO un JSON válido (sin texto adicional, sin bloques de código markdown):
 {
   "fecha": "${fecha}",
   "partidos": [
     {
-      "equipoLocal": "string",
-      "equipoVisitante": "string",
-      "liga": "string",
+      "equipoLocal": "Nombre real del equipo",
+      "equipoVisitante": "Nombre real del equipo",
+      "liga": "Nombre de la liga / competición",
       "horaColombia": "HH:mm",
       "probabilidadBTTS": número entre 65 y 100,
-      "justificacion": ["dato estadístico 1", "dato estadístico 2", "dato estadístico 3", "dato estadístico 4"],
+      "justificacion": [
+        "% BTTS histórico del equipo local (ejemplo: 70% en últimas 10 jornadas)",
+        "Promedio de goles del equipo visitante (ejemplo: 1.8 goles/partido)",
+        "Historial de enfrentamientos directos (ejemplo: 4 de 5 últimos con BTTS)",
+        "Contexto motivacional o situación de forma reciente"
+      ],
       "nivelConfianza": "alto" | "medio" | "bajo"
     }
   ],
   "partidosBttsNo": [
     {
-      "equipoLocal": "string",
-      "equipoVisitante": "string",
-      "liga": "string",
+      "equipoLocal": "Nombre real del equipo",
+      "equipoVisitante": "Nombre real del equipo",
+      "liga": "Nombre de la liga / competición",
       "horaColombia": "HH:mm",
       "probabilidadBttsNo": número entre 65 y 100,
-      "justificacion": ["dato estadístico 1", "dato estadístico 2", "dato estadístico 3", "dato estadístico 4"],
+      "justificacion": [
+        "Sólida defensa del equipo local (ejemplo: solo 0.7 goles recibidos/partido)",
+        "Equipo visitante con bajo poder ofensivo (ejemplo: 1.1 goles/partido)",
+        "Historial defensivo (ejemplo: 6 de 10 partidos con portería a cero)",
+        "Contexto del partido (eliminatoria, partido de ida, etc.)"
+      ],
       "nivelConfianza": "alto" | "medio" | "bajo"
     }
   ],
-  "mensaje": "solo si el calendario está flaco o no hay suficientes datos"
+  "mensaje": "Solo si no hay suficientes partidos para la fecha indicada"
 }
 
-Reglas importantes:
-- En "partidos" incluye SOLO los de BTTS Sí ≥65%, ordenados de mayor a menor probabilidad
-- En "partidosBttsNo" incluye SOLO los de BTTS No ≥65%, ordenados de mayor a menor probabilidadBttsNo
-- Las horas van en hora Colombia (UTC-5)
-- Cada justificacion debe tener datos duros: porcentajes reales, promedios de goles, rachas concretas
-- Si no hay suficientes partidos sobre el umbral en alguna categoría, deja ese arreglo vacío
-- Nunca inventes fixtures ni datos estadísticos`;
+Reglas:
+- "partidos": SOLO partidos con probabilidadBTTS ≥ 65%, ordenados mayor a menor
+- "partidosBttsNo": SOLO partidos con probabilidadBttsNo ≥ 65%, ordenados mayor a menor
+- Horas en Colombia (UTC-5); si no conoces la hora exacta usa "TBD"
+- Incluye entre 5 y 15 partidos en total entre ambas categorías
+- Usa solo equipos y ligas reales que efectivamente jueguen en esa fecha o período
+- Si la fecha ya pasó, analiza partidos conocidos de ese día según tu conocimiento`;
 
   try {
-    const ai = getGeminiClient();
+    const ai = getAIClient();
     const respuesta = await conReintentos(() =>
-      ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          tools: [{ googleSearch: {} }],
-        },
+      ai.chat.completions.create({
+        model: AI_MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens: 4096,
       })
     );
 
-    const texto = respuesta.text;
-    if (!texto) {
-      throw new Error("Gemini no devolvió contenido de texto.");
-    }
+    const texto = respuesta.choices[0]?.message?.content ?? "";
+    if (!texto) throw new Error("El modelo no devolvió contenido.");
 
     const datos = extraerJSON<AnalisisDiaResponse>(texto);
-
-    // Garantiza que partidosBttsNo siempre exista aunque Gemini lo omita
-    if (!Array.isArray(datos.partidosBttsNo)) {
-      datos.partidosBttsNo = [];
-    }
+    if (!Array.isArray(datos.partidosBttsNo)) datos.partidosBttsNo = [];
 
     return NextResponse.json(datos);
   } catch (error) {
     console.error("Error en /api/analizar:", error);
     const detalle = error instanceof Error ? error.message : "Error desconocido.";
 
-    if (/429|RESOURCE_EXHAUSTED|quota/i.test(detalle)) {
+    if (/429|rate.limit|too many/i.test(detalle)) {
       return NextResponse.json(
-        {
-          error:
-            "Cuota de la API de Gemini agotada (límite gratuito del día). " +
-            "Opciones: (1) espera hasta mañana para que se renueve, o " +
-            "(2) activa facturación en aistudio.google.com → el costo es < $0.01 por consulta.",
-        },
+        { error: "Demasiadas solicitudes. Espera un momento e intenta de nuevo." },
         { status: 429 }
       );
     }
