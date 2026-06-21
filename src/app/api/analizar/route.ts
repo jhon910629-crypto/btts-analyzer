@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GEMINI_MODEL, conReintentos, extraerJSON, getGeminiClient } from "@/lib/gemini";
+import type { AnalisisDiaResponse } from "@/lib/types";
 
 export const maxDuration = 60;
-import type { AnalisisDiaResponse } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   let fecha: unknown;
@@ -16,9 +16,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Debes indicar una fecha." }, { status: 400 });
   }
 
-  const prompt = `Busca en internet los partidos de fútbol reales programados para ${fecha}. Apóyate en resultados de búsqueda de sitios de estadísticas y análisis deportivo como Flashscore, SofaScore, WhoScored, FootyStats, Transfermarkt, ESPN y similares para obtener datos actualizados y confiables. Para cada partido evalúa: % BTTS últimos 5-10 partidos de cada equipo, promedio de goles a favor y en contra, rendimiento local/visitante, racha de porterías a cero y contexto motivacional.
+  const prompt = `Eres un analista deportivo experto en estadísticas de fútbol. Busca en internet los partidos de fútbol reales programados para ${fecha} usando sitios como Flashscore, SofaScore, WhoScored, FootyStats, Transfermarkt y ESPN.
 
-Devuelve SOLO un JSON válido (sin texto adicional, sin bloques de código markdown) con esta forma exacta:
+Para cada partido analiza con precisión:
+- % de partidos BTTS (ambos equipos anotan) en los últimos 10 encuentros de cada equipo
+- Promedio de goles a favor y en contra por partido (últimas 10 jornadas)
+- Rendimiento como local / visitante por separado
+- Rachas actuales (goles marcados / recibidos consecutivos)
+- Lesiones y suspensiones que afecten la línea ofensiva o defensiva
+- Contexto motivacional (¿necesitan ganar?, ¿posición en tabla?, ¿rival directo?)
+- Cuotas y estadísticas de casas de apuestas como referencia (sin recomendar apuestas)
+
+Clasifica los partidos en DOS categorías:
+
+1. **BTTS SÍ** (ambos anotan): partidos donde la probabilidad de que AMBOS equipos marquen es ≥65%
+2. **BTTS NO** (al menos uno no anota): partidos donde la probabilidad de que AL MENOS UN equipo NO marque es ≥65% (portería a cero probable, partido defensivo o goleo de un solo lado)
+
+Devuelve SOLO un JSON válido (sin texto adicional, sin bloques de código markdown) con esta estructura exacta:
 {
   "fecha": "${fecha}",
   "partidos": [
@@ -28,14 +42,31 @@ Devuelve SOLO un JSON válido (sin texto adicional, sin bloques de código markd
       "liga": "string",
       "horaColombia": "HH:mm",
       "probabilidadBTTS": número entre 65 y 100,
-      "justificacion": ["dato duro 1", "dato duro 2", "dato duro 3"],
+      "justificacion": ["dato estadístico 1", "dato estadístico 2", "dato estadístico 3", "dato estadístico 4"],
       "nivelConfianza": "alto" | "medio" | "bajo"
     }
   ],
-  "mensaje": "opcional, solo si el calendario está flaco o no hay suficientes partidos sobre el umbral"
+  "partidosBttsNo": [
+    {
+      "equipoLocal": "string",
+      "equipoVisitante": "string",
+      "liga": "string",
+      "horaColombia": "HH:mm",
+      "probabilidadBttsNo": número entre 65 y 100,
+      "justificacion": ["dato estadístico 1", "dato estadístico 2", "dato estadístico 3", "dato estadístico 4"],
+      "nivelConfianza": "alto" | "medio" | "bajo"
+    }
+  ],
+  "mensaje": "solo si el calendario está flaco o no hay suficientes datos"
 }
 
-Incluye SOLO partidos que superen 65% de probabilidad BTTS, ordenados de mayor a menor probabilidad. Las horas deben estar convertidas a hora de Colombia (UTC-5). Si no hay suficientes partidos sobre el umbral, indícalo honestamente en "mensaje" y deja "partidos" como un arreglo vacío o más corto. Nunca inventes fixtures.`;
+Reglas importantes:
+- En "partidos" incluye SOLO los de BTTS Sí ≥65%, ordenados de mayor a menor probabilidad
+- En "partidosBttsNo" incluye SOLO los de BTTS No ≥65%, ordenados de mayor a menor probabilidadBttsNo
+- Las horas van en hora Colombia (UTC-5)
+- Cada justificacion debe tener datos duros: porcentajes reales, promedios de goles, rachas concretas
+- Si no hay suficientes partidos sobre el umbral en alguna categoría, deja ese arreglo vacío
+- Nunca inventes fixtures ni datos estadísticos`;
 
   try {
     const ai = getGeminiClient();
@@ -55,6 +86,11 @@ Incluye SOLO partidos que superen 65% de probabilidad BTTS, ordenados de mayor a
     }
 
     const datos = extraerJSON<AnalisisDiaResponse>(texto);
+
+    // Garantiza que partidosBttsNo siempre exista aunque Gemini lo omita
+    if (!Array.isArray(datos.partidosBttsNo)) {
+      datos.partidosBttsNo = [];
+    }
 
     return NextResponse.json(datos);
   } catch (error) {

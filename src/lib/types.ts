@@ -8,14 +8,25 @@ export interface Partido {
   liga: string;
   horaColombia: string; // formato "HH:mm"
   probabilidadBTTS: number; // 0-100
-  justificacion: string[]; // 2-3 datos duros
+  justificacion: string[]; // 3-4 datos duros
+  nivelConfianza: NivelConfianza;
+}
+
+export interface PartidoBttsNo {
+  equipoLocal: string;
+  equipoVisitante: string;
+  liga: string;
+  horaColombia: string;
+  probabilidadBttsNo: number; // 65-100: prob de que al menos un equipo NO anote
+  justificacion: string[];
   nivelConfianza: NivelConfianza;
 }
 
 export interface AnalisisDiaResponse {
   fecha: string;
-  partidos: Partido[];
-  mensaje?: string; // aviso si el calendario está flaco
+  partidos: Partido[];              // BTTS Sí: ambos anotan ≥65%
+  partidosBttsNo: PartidoBttsNo[];  // BTTS No: al menos uno NO anota ≥65%
+  mensaje?: string;
 }
 
 export interface AnalisisProfundoResponse {
