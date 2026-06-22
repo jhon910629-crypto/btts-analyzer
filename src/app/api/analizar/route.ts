@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AI_MODEL, conReintentos, extraerJSON, getAIClient } from "@/lib/ai";
+import { obtenerPartidos } from "@/lib/fixtures";
 import type { AnalisisDiaResponse } from "@/lib/types";
 
 export const maxDuration = 60;
@@ -16,66 +17,96 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Debes indicar una fecha." }, { status: 400 });
   }
 
-  const prompt = `Eres un analista deportivo experto en estadísticas de fútbol con conocimiento profundo de ligas europeas, sudamericanas y mundiales.
+  // 1. Obtener partidos reales del día desde ESPN (sin API key)
+  let partidos: Awaited<ReturnType<typeof obtenerPartidos>> = [];
+  try {
+    partidos = await obtenerPartidos(fecha);
+  } catch {
+    // Si ESPN falla, continuamos con lista vacía (Groq indicará el problema)
+  }
 
-Analiza los partidos de fútbol para la fecha ${fecha}. Basándote en tu conocimiento estadístico de los equipos, identifica partidos con alta o baja probabilidad BTTS (ambos equipos anotan).
+  const hayPartidos = partidos.length > 0;
 
-Para cada partido utiliza estos criterios estadísticos:
-- % BTTS histórico de cada equipo en las últimas temporadas (promedio de partidos donde ambos anotaron)
-- Promedio de goles anotados y recibidos por partido
-- Rendimiento ofensivo/defensivo como local y como visitante
-- Historial de encuentros directos entre ambos equipos
-- Racha reciente de resultados y forma del equipo
-- Contexto motivacional (posición en tabla, importancia del partido, fase de la competición)
-- Presencia de delanteros o defensas clave (según conocimiento histórico del equipo)
+  const listaPartidos = hayPartidos
+    ? partidos
+        .slice(0, 40) // máximo 40 para no saturar el contexto
+        .map((p) => `- ${p.equipoLocal} vs ${p.equipoVisitante} | ${p.liga} | ${p.horaColombia} hora Colombia`)
+        .join("\n")
+    : "No se encontraron partidos programados en las ligas monitoreadas para esta fecha.";
 
-Considera partidos de ligas activas durante el período de ${fecha} incluyendo: Premier League, LaLiga, Serie A, Bundesliga, Ligue 1, Liga Colombiana, Copa Libertadores, Copa Sudamericana, Champions League, Europa League, partidos internacionales y otras ligas relevantes activas en esa fecha.
+  const prompt = `Eres un analista deportivo experto en estadísticas de fútbol.
 
-Devuelve SOLO un JSON válido (sin texto adicional, sin bloques de código markdown):
+${hayPartidos
+  ? `A continuación están los partidos REALES programados para ${fecha}, obtenidos de fuentes oficiales. Analiza SOLO estos partidos — no inventes ni agregues otros:`
+  : `No se encontraron partidos en las ligas principales para ${fecha}.`}
+
+${listaPartidos}
+
+${hayPartidos ? `
+Para cada partido que supere los umbrales, evalúa la probabilidad BTTS basándote en tu conocimiento estadístico:
+- % de partidos con BTTS en el historial reciente de cada equipo
+- Promedio de goles anotados y recibidos por partido (últimas temporadas)
+- Rendimiento como local vs visitante
+- Historial de enfrentamientos directos
+- Forma reciente y contexto motivacional
+
+Clasifica en DOS categorías:
+• BTTS SÍ: probabilidad ≥ 65% de que AMBOS equipos anoten
+• BTTS NO: probabilidad ≥ 65% de que AL MENOS UNO no anote (portería a cero)
+
+Devuelve SOLO un JSON válido (sin texto adicional, sin bloques de código):
 {
   "fecha": "${fecha}",
   "partidos": [
     {
-      "equipoLocal": "Nombre real del equipo",
-      "equipoVisitante": "Nombre real del equipo",
-      "liga": "Nombre de la liga / competición",
-      "horaColombia": "HH:mm",
+      "equipoLocal": "nombre exacto del equipo de la lista",
+      "equipoVisitante": "nombre exacto del equipo de la lista",
+      "liga": "liga de la lista",
+      "horaColombia": "HH:mm de la lista",
       "probabilidadBTTS": número entre 65 y 100,
       "justificacion": [
-        "% BTTS histórico del equipo local (ejemplo: 70% en últimas 10 jornadas)",
-        "Promedio de goles del equipo visitante (ejemplo: 1.8 goles/partido)",
-        "Historial de enfrentamientos directos (ejemplo: 4 de 5 últimos con BTTS)",
-        "Contexto motivacional o situación de forma reciente"
+        "% BTTS histórico del equipo local con dato concreto",
+        "Promedio de goles del equipo visitante con dato concreto",
+        "Historial de enfrentamientos directos",
+        "Contexto motivacional o forma reciente"
       ],
       "nivelConfianza": "alto" | "medio" | "bajo"
     }
   ],
   "partidosBttsNo": [
     {
-      "equipoLocal": "Nombre real del equipo",
-      "equipoVisitante": "Nombre real del equipo",
-      "liga": "Nombre de la liga / competición",
-      "horaColombia": "HH:mm",
+      "equipoLocal": "nombre exacto del equipo de la lista",
+      "equipoVisitante": "nombre exacto del equipo de la lista",
+      "liga": "liga de la lista",
+      "horaColombia": "HH:mm de la lista",
       "probabilidadBttsNo": número entre 65 y 100,
       "justificacion": [
-        "Sólida defensa del equipo local (ejemplo: solo 0.7 goles recibidos/partido)",
-        "Equipo visitante con bajo poder ofensivo (ejemplo: 1.1 goles/partido)",
-        "Historial defensivo (ejemplo: 6 de 10 partidos con portería a cero)",
-        "Contexto del partido (eliminatoria, partido de ida, etc.)"
+        "Solidez defensiva del equipo local con dato concreto",
+        "Poder ofensivo limitado del visitante",
+        "Historial de porterías a cero",
+        "Contexto del partido"
       ],
       "nivelConfianza": "alto" | "medio" | "bajo"
     }
   ],
-  "mensaje": "Solo si no hay suficientes partidos para la fecha indicada"
+  "mensaje": ""
 }
 
 Reglas:
-- "partidos": SOLO partidos con probabilidadBTTS ≥ 65%, ordenados mayor a menor
-- "partidosBttsNo": SOLO partidos con probabilidadBttsNo ≥ 65%, ordenados mayor a menor
-- Horas en Colombia (UTC-5); si no conoces la hora exacta usa "TBD"
-- Incluye entre 5 y 15 partidos en total entre ambas categorías
-- Usa solo equipos y ligas reales que efectivamente jueguen en esa fecha o período
-- Si la fecha ya pasó, analiza partidos conocidos de ese día según tu conocimiento`;
+- Usa EXACTAMENTE los nombres de equipos y horas de la lista proporcionada
+- En "partidos": solo BTTS Sí ≥ 65%, ordenados de mayor a menor probabilidad
+- En "partidosBttsNo": solo BTTS No ≥ 65%, ordenados de mayor a menor
+- Si un partido no supera ningún umbral, no lo incluyas en ninguna sección
+- Si no conoces suficiente sobre algún equipo, ponlo con nivelConfianza "bajo"
+` : `
+Devuelve este JSON exacto:
+{
+  "fecha": "${fecha}",
+  "partidos": [],
+  "partidosBttsNo": [],
+  "mensaje": "No se encontraron partidos en las ligas monitoreadas para esta fecha. Intenta con otra fecha o verifica que haya partidos programados."
+}
+`}`;
 
   try {
     const ai = getAIClient();
@@ -83,7 +114,7 @@ Reglas:
       ai.chat.completions.create({
         model: AI_MODEL,
         messages: [{ role: "user", content: prompt }],
-        temperature: 0.3,
+        temperature: 0.2,
         max_tokens: 4096,
       })
     );
@@ -105,7 +136,6 @@ Reglas:
         { status: 429 }
       );
     }
-
     return NextResponse.json(
       { error: `No se pudo completar el análisis: ${detalle}` },
       { status: 500 }
