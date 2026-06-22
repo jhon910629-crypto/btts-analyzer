@@ -6,7 +6,7 @@ export function getAIClient(): Groq {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     throw new Error(
-      "Falta la variable de entorno GROQ_API_KEY. Configúrala en .env.local."
+      "Falta la variable de entorno GROQ_API_KEY. Configurala en .env.local."
     );
   }
   return new Groq({ apiKey });
@@ -30,13 +30,26 @@ export async function conReintentos<T>(
   throw new Error("No se pudo completar la solicitud tras varios intentos.");
 }
 
+// Repara mojibake: bytes UTF-8 multi-byte que quedaron como code points Latin-1 individuales.
+// Detecta: byte de inicio UTF-8 (U+00C0-U+00FF) seguido de byte de continuacion (U+0080-U+00BF).
+export function repararEncoding(texto: string): string {
+  /* eslint-disable no-control-regex */
+  const tieneMojibake = /[À-ÿ][-¿]/.test(texto);
+  if (!tieneMojibake) return texto;
+  try {
+    return Buffer.from(texto, "latin1").toString("utf8");
+  } catch {
+    return texto;
+  }
+}
+
 export function extraerJSON<T>(texto: string): T {
-  const limpio = texto.trim();
-  try { return JSON.parse(limpio) as T; } catch { /* continúa */ }
+  const limpio = repararEncoding(texto.trim());
+  try { return JSON.parse(limpio) as T; } catch { /* continua */ }
 
   const bloque = limpio.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (bloque) {
-    try { return JSON.parse(bloque[1].trim()) as T; } catch { /* continúa */ }
+    try { return JSON.parse(bloque[1].trim()) as T; } catch { /* continua */ }
   }
 
   const inicio = limpio.search(/[[{]/);
@@ -47,5 +60,5 @@ export function extraerJSON<T>(texto: string): T {
     }
   }
 
-  throw new Error("No se pudo extraer JSON válido de la respuesta.");
+  throw new Error("No se pudo extraer JSON valido de la respuesta.");
 }
